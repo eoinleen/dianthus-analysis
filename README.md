@@ -1,82 +1,79 @@
-# Dianthus binding analysis
+# Input data format
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/eoinleen/dianthus-analysis/blob/main/Dianthus_analysis.ipynb)
+The notebook reads two layouts. Upload any mix of them in one run. Example files for both are in [`examples/`](../examples/); if your file looks like those, it will load.
 
-Fits NanoTemper Dianthus titrations — TRIC (F<sub>norm</sub>) and spectral shift (670/650 ratio) — and makes publication-ready figures, result tables, PowerPoint decks and a methods paragraph.
+---
 
-- **1:1 binding with ligand depletion** (Morrison quadratic), repeats fitted globally (shared K<sub>D</sub>, own baselines), 95% CI by residual bootstrap
-- **Two-site model** (two independent classes of site) as an alternative reported model
-- **Diagnostics on every sample**: ΔAICc against a linear non-specific term, a Hill fit and a two-site fit; Hill EC<sub>50</sub> and n<sub>H</sub> saved
-- **Optional Hill figure set**, including the linearised Hill plot
-- **Reads** wide Excel/CSV sheets and the Dianthus software's own export tables; TRIC vs ratio detected automatically
-- **Figure rows** sized to a page width (default 180 mm) with identical data boxes — place at 100% and fonts are the sizes you set
+## 1. Wide sheet (your own layout)
 
-![Example output](docs/example_Figure_rows.png)
-*`Figure_rows` from the bundled example data: TRIC row (top), spectral-shift row (bottom).*
+One file = one plate, one readout. `.xlsx` (**first worksheet only**) or `.csv`.
 
-## Quick start
-1. Click **Open in Colab** above.
-2. Edit the **settings** cell (at minimum `TOTAL_TARGET_NM`, `TITRANT_NAME`, `TRACER_DESCRIPTION`).
-3. **Runtime → Run all**, then upload your file(s) when asked. A zip of all outputs downloads at the end.
+|   | A | B | C | D | E | F | … |
+|---|---|---|---|---|---|---|---|
+| **1** | Binder A | | Binder A | | Binder B | | |
+| **2** | [EL17] (nM) | Ratio | [EL17] (nM) | Ratio | [EL17] (nM) | Ratio | |
+| **3** | 20000 | 1.0633 | 20000 | 1.0621 | 20000 | 1.0381 | |
+| **4** | 6666.7 | 1.0609 | 6666.7 | 1.0605 | 6666.7 | 1.0412 | |
+| … | … | … | … | … | … | … | |
 
-To try it first, upload the files in [`examples/`](examples/): `example_wide_tric.xlsx` + `example_wide_ratio.xlsx` together (1:1), or the four files in `examples/export_tables/` with `FIT_MODEL = "two_site"`. All example data are synthetic.
+**Columns** come in pairs: concentration, then signal (A+B, C+D, E+F, …). A last unpaired column is ignored.
 
-## Inputs (both kinds can go in one run)
-| Layout | What it looks like | How repeats are grouped |
+**Row 1: sample name**, written above the concentration column (or the signal column; either works).
+- Pairs with the **same name are repeats** and are fitted together. The match is exact: `K11` and `K11 ` are the same (spaces are trimmed), but `K11` and `k11` are two samples.
+- An empty name becomes `Sample 1`, `Sample 2`, and so on.
+- Repeats are pooled **within one file only**. The same name in two different wide files gives two separate analyses.
+
+**Row 2: optional.** Column headers, blank, or already data. Any cell that isn't a number is skipped wherever it appears.
+
+**Concentration**
+- In **nM**. Wide sheets get no unit conversion, so µM values would be read as nM.
+- Any order (sorted internally). Repeats may use different concentrations and different numbers of points.
+- 0 is allowed: it's used in the fit but can't be shown on the log axis. Negative values are dropped.
+
+**Signal**
+- Spectral shift: the 670/650 ratio (values around 1).
+- TRIC: F<sub>norm</sub> in ‰, as exported (values around 900).
+- The readout is detected **per file** from the median signal: below 10 means ratio, otherwise TRIC. Don't put both readouts in one file.
+
+**Missing values:** leave the cell empty. A row with either value missing is dropped for that pair only.
+
+---
+
+## 2. Dianthus software export table
+
+One file = **one repeat** of one sample, exactly as the instrument software exports it. `.xlsx` or `.csv`. The file is recognised by a column named exactly `Ligand Conc.` in its first row.
+
+| Column | Required | Use |
 |---|---|---|
-| **Wide sheet** | Row 1 = sample names, one per column pair; columns alternate conc. (nM) / signal. A header row under the names is optional. | Column pairs with the same name |
-| **Dianthus export table** | The instrument's own table (`Well ID`, `Ligand Conc.`, `Ligand Conc. Unit`, `Ratio` or Fnorm, `Anomaly`) — one file per repeat | File name minus `table-` and trailing `-<number>`s: `table-K11-EL17-3.xlsx` → `K11-EL17`. All export files of one readout are pooled. |
+| `Ligand Conc.` | yes | concentration |
+| `Ligand Conc. Unit` | no | `pM`, `nM`, `µM`/`uM`, `mM`. If the column is absent, nM is assumed. ⚠ Any other unit text currently drops that row without a warning |
+| `Ratio` | one of these two | spectral-shift signal |
+| a column containing `norm` (e.g. `Fnorm`) | one of these two | TRIC signal |
+| `Anomaly` | no | `-` = OK. Anything else counts as flagged; flagged wells are dropped only with `DROP_ANOMALIES = True` |
 
-TRIC vs ratio is detected from the signal size, so files don't need naming.
+Other columns (`Well ID`, `Initial Fluorescence`, …) are ignored.
 
-## Settings you will actually change
-| Setting | Use |
+**The sample name comes from the file name:** a leading `table-` is removed, then any trailing `-<number>` groups.
+
+| File name | Sample |
 |---|---|
-| `TOTAL_TARGET_NM` | Total tracer in the well (labelled + unlabelled), nM |
-| `FIT_MODEL` | `"1:1"` (default) or `"two_site"`. Decide before looking at the data. |
-| `TWO_SITE_KD2_NM` | Fix the weak-site Kd (nM) when the top concentration can't define it, e.g. from an independent experiment. `None` = fitted. |
-| `MAX_CONC_NM` | Ignore wells above this concentration (all samples; state it as a rule). `None` = use all. |
-| `DROP_ANOMALIES` | Export tables only: drop wells the instrument flagged in `Anomaly`. Default `False`. |
-| `HILL_FIGURES` | `True` = also write a `hill/` folder: panels, grid and overlays with the Hill fit (EC50 ± CI, n_H) and the classic linearised Hill plot (log[θ/(1−θ)] vs log[L]; slope = n_H, zero crossing = EC50). Hill panels, overlay and Hill plot are appended to the main PPTX after the reported-model slides. Descriptive only; roughly doubles run time. |
-| `X_SCI_FROM` | x-axis labels plain below this (nM), 10ⁿ from it. Default 1000 → 0.1 1 10 100 10³ 10⁴. |
+| `table-K11-EL17-1.xlsx` | `K11-EL17` |
+| `table-K11-EL17-1-2.xlsx` | `K11-EL17` |
+| `table-K33-EL17-4.xlsx` | `K33-EL17` |
+| ⚠ `table-diUb-48-1.xlsx` | `diUb`: the `-48` is removed too |
 
-## Main figure: `Figure_rows.pdf` / `.svg` / `.png`
-One row per readout (TRIC row, then spectral-shift row), two panels per row: fraction bound with the legend ("K11 (K_D = 187 ± 50 nM)" / "n = 5, R² = 0.99"), then the raw signal. It is exactly `PAGE_WIDTH_MM` wide (default 180 mm, an A4 page with margins) and every data box is identical, so **place it at 100%** and the fonts are the sizes set in AESTHETICS. With `HILL_FIGURES = True` there is a matching `Figure_rows_hill`. `Figure_rows.pptx` holds both at true size on A4 slides. The two panels also exist as separate files in each readout folder (`overlay_panel`, `overlay_raw`), same box size.
+So **don't end a sample name with `-<number>`**. Write `K48diUb`, not `diUb-48`.
 
-## Changing figure text
-All text on the figures lives in the **LABELS** block of the settings cell: sample display names (`SAMPLE_LABELS`), axis labels, the Kd / EC50 / n_H symbols, the representative-panel title, panel titles on/off, and whether legends show n and R².
+All export tables of the same readout in one upload are **pooled**: files that give the same sample name become repeats of that sample.
 
-## Reading `results.csv`
-- `Kd_nM`, `Kd_CI95_low/high`: the reported model (Kd1 for two-site), with residual-bootstrap 95% CI.
-- Two-site extras: `Kd2_nM` (+CI if fitted), `frac_tight_site` = fraction of the signal change from the tight site.
-- Diagnostics, always run: `dAICc_1to1`, `dAICc_nonspecific`, `dAICc_hill`, `dAICc_twosite` = AICc(reported) − AICc(alternative). **Positive = the alternative fits better; > 6 = strongly.** Also `hill_EC50_nM`, `hill_n` (Dianthus-software-style Hill; with `HILL_FIGURES` also their 95% CIs), and `twosite_Kd1_nM`, `twosite_Kd2_nM`, `twosite_frac_tight`.
-- Flags worth acting on: `two-site strongly favoured` (consider `FIT_MODEL = "two_site"` *for the next experiment's pre-specified analysis*), `two-site not resolved by these data` (Kd2 ran beyond the data — fix `TWO_SITE_KD2_NM` or stay with 1:1), `Kd2 near/above top concentration`.
+---
 
-## Outputs
-| File | Content |
+## Settings that change what is read
+| Setting | Effect |
 |---|---|
-| `Figure_rows.pdf/svg/png` | Main figure: one row per readout, fraction bound (with legend) + raw signal |
-| `Figure_rows_hill.*` | Same, Hill fits (`HILL_FIGURES = True`) |
-| `Figure_rows.pptx` | The above at true size on A4 slides |
-| `<readout>/results.csv` | All numbers, flags and diagnostics per sample |
-| `<readout>/methods.txt` | Auto-generated methods paragraph, including the notebook version |
-| `<readout>/<sample>.*`, `all_samples.*` | Per-sample panels (fit, CI band, residuals) |
-| `<readout>/overlay_panel.*`, `overlay_raw.*` | The two row panels as separate files |
-| `<readout>/Figure_TRIC.pptx` / `Figure_SpectralShift.pptx` | Per-sample panel grids + overlays (+ Hill section) |
-| `<readout>/hill/` | Hill figure set, incl. the linearised Hill plot |
+| `MAX_CONC_NM` | Wells above this concentration are ignored, for every sample |
+| `DROP_ANOMALIES` | Export tables: drop wells flagged in `Anomaly` |
+| `SAMPLE_LABELS` | Rename samples after loading. Two samples given the same new name are pooled |
 
-## Citing a fixed version
-`main` always holds the latest notebook. For a paper, cite the tagged version printed at the top of each run and in `methods.txt`, e.g.
-`https://github.com/eoinleen/dianthus-analysis/tree/v33` — and the Colab link to exactly that version is
-`https://colab.research.google.com/github/eoinleen/dianthus-analysis/blob/v33/Dianthus_analysis.ipynb`.
-
-## Updating the notebook (maintainer notes)
-The file name never changes; Git keeps the history. From Colab:
-1. Make the change; bump `NOTEBOOK_VERSION` at the top of the analysis cell (e.g. `"v34"`).
-2. **Edit → Clear all outputs** (outputs contain your data and figures, and this repo is public).
-3. **File → Save a copy in GitHub** → repository `eoinleen/dianthus-analysis`, branch `main`, file path `Dianthus_analysis.ipynb`, a one-line commit message.
-4. Add a line to `CHANGELOG.md` (edit it on github.com: pencil icon).
-5. On github.com: **Releases → Draft a new release** → tag `v34` → Publish. That creates the fixed version others can cite.
-
-## Licence
-MIT — see [LICENSE](LICENSE).
+## Checking that it read what you meant
+Each run prints a table per file with `n_repeats` for every sample, and `results.csv` adds `n_points`. Compare both with your plate layout before you look at any Kd. A missing repeat or points almost always means a naming or unit problem.
