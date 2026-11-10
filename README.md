@@ -1,6 +1,6 @@
 # Input data format
 
-The notebook reads two layouts. Upload any mix of them in one run. Example files for both are in [`examples/`](../examples/); if your file looks like those, it will load.
+The notebook reads two layouts. Upload any mix of them in one run. Example files for both are in the examples folder (see above!); if your file looks like those, it will load.
 
 ---
 
