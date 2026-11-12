@@ -1,3 +1,6 @@
+https://colab.research.google.com/github/eoinleen/dianthus-analysis/blob/main/Dianthus_analysis.ipynb
+
+
 # Input data format
 
 The notebook reads two layouts. Upload any mix of them in one run. Example files for both are in the examples folder (see above!); if your file looks like those, it will load.
